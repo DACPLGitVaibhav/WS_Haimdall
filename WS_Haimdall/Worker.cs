@@ -13,7 +13,7 @@ namespace WS_Haimdall
     public class Worker : BackgroundService
     {
         #region Varraibles
-
+        // New code update
         // Your  fields moved from Program
         private Session _opcSession = null;       
         private SessionReconnectHandler reconnectHandler = null;
