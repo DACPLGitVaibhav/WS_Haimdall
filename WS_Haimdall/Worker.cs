@@ -48,8 +48,8 @@ namespace WS_Haimdall
                      IConfiguration configuration = builder.Build();
                      Config.Load(configuration);
 
-                     // Start OPC connection without blocking service startup
-                     // _ = ConnectOPC();
+                     //Start OPC connection without blocking service startup
+                     _ = ConnectOPC();
 
                      // Start timer
                      tmr = new System.Timers.Timer(15000);
@@ -473,6 +473,9 @@ namespace WS_Haimdall
 
 
                 #region CheckMapDrive
+                /////CheckPLCCon
+                await NewMethod(Config.Node_CheckPLCcon, true);
+
                 if (!Directory.Exists(Config.WatchFolder))
                 {
                     await NewMethod(Config.Node_CheckMapDrive, false);
@@ -485,8 +488,7 @@ namespace WS_Haimdall
                 }
                 #endregion
 
-                /////CheckPLCCon
-                await NewMethod(Config.Node_CheckPLCcon, true);
+               
 
                 var latestFiles = new DirectoryInfo(Config.WatchFolder)
                .GetFiles("*.txt")
