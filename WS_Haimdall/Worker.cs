@@ -15,8 +15,7 @@ namespace WS_Haimdall
         #region Varraibles
 
         // Your  fields moved from Program
-        private Session _opcSession = null;
-        private FileSystemWatcher _watcher = null;
+        private Session _opcSession = null;       
         private SessionReconnectHandler reconnectHandler = null;
         private object lockObj = new object();
         public System.Timers.Timer tmr = null;
