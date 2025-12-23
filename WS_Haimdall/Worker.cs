@@ -5,6 +5,7 @@ using Opc.Ua.Client;
 using Org.BouncyCastle.Math;
 using Serilog;
 using System.Globalization;
+using System.Management;
 using System.Timers;
 using static Org.BouncyCastle.Math.EC.ECCurve;
 
@@ -35,6 +36,10 @@ namespace WS_Haimdall
 
         protected override Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            string Liencence= GetMachineSerialNumber();
+            if(Liencence == "") 
+            {              
+            
             _ = Task.Run(async () =>
              {
                  try
@@ -52,7 +57,7 @@ namespace WS_Haimdall
                      _ = ConnectOPC();
 
                      // Start timer
-                     tmr = new System.Timers.Timer(15000);
+                     tmr = new System.Timers.Timer(5000);
                      tmr.Elapsed += Tmr_Elapsed;
                      tmr.Start();
 
@@ -66,48 +71,15 @@ namespace WS_Haimdall
              });
 
             return Task.CompletedTask; // returns immediately ✔
+            }
+            else
+            {
+                Log.Warning("This computer is not authorized to run this application.Please contact your software provider to activate the license.");
+                // 🔴 Stop service immediately
+                Environment.ExitCode = -1;
 
-
-            #region Old
-            //    Log.Information("=== Worker Service Started ===");
-            //    // -------- Load config (same as your Main) ----------
-            //    var builder = new ConfigurationBuilder()
-            //        .SetBasePath(AppContext.BaseDirectory)
-            //        .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-
-            //    IConfiguration configuration = builder.Build();
-
-            //    Config.Load(configuration);
-
-            //    // ------------------------ Logging ------------------------
-
-
-
-            //    //  ----------------------OPC CONNECT------------------ -
-
-
-
-            //    await ConnectOPC();
-
-            //    Log.Information("Watching folder: " + Config.WatchFolder);
-
-            //    // ---------------------- TIMER -------------------------
-            //    tmr = new System.Timers.Timer(15000);
-            //    tmr.Elapsed += Tmr_Elapsed;
-            //    tmr.Start();
-
-            //    // Worker service loop (keeps service alive)
-            //    while (!stoppingToken.IsCancellationRequested)
-            //    {
-            //        await Task.Delay(1000);
-            //    }
-            //}
-            //catch (Exception ex)
-            //{
-            //    Log.Error(ex, "Worker Service crashed.");
-            //}
-            #endregion
-
+                return Task.CompletedTask;
+            }
         }
         [Obsolete]
         private async Task ConnectOPC()
@@ -169,6 +141,28 @@ namespace WS_Haimdall
             {
                 Log.Error("Error at ConnectOPCSession" + ex.Message);
             }
+        }
+        public string GetMachineSerialNumber()
+        {
+            string serialNumber = "";
+            try
+            {
+                ManagementObjectSearcher searcher = new ManagementObjectSearcher("SELECT SerialNumber FROM Win32_BIOS");
+                ManagementObjectCollection information = searcher.Get();
+                foreach (ManagementObject obj in information)
+                {
+                    if (obj["SerialNumber"] != null)
+                    {
+                        serialNumber = obj["SerialNumber"].ToString().Trim();
+                        break;
+                    }
+                }
+            }
+            catch (ManagementException e)
+            {
+                Log.Error("An error occurred while querying WMI: " + e.Message);
+            }
+            return serialNumber;
         }
         private void _opcSession_KeepAlive(ISession session, KeepAliveEventArgs e)
         {
@@ -392,7 +386,7 @@ namespace WS_Haimdall
         }
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
-            Log.Information("=== Worker Service stopping... ===");
+            Log.Information("=== Application stopping... ===");
 
             try
             {
@@ -425,7 +419,7 @@ namespace WS_Haimdall
                 Log.Error("Error in StopAsync: " + ex.Message);
             }
 
-            Log.Information("=== Worker Service stopped ===");
+            Log.Information("=== Application stopped ===");
 
             await base.StopAsync(cancellationToken);
         }

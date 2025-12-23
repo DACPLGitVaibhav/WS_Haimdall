@@ -30,7 +30,7 @@ class Program
         //    .WriteTo.File(logFile, rollingInterval: RollingInterval.Day)
         //    .CreateLogger();
 
-        Log.Information("Service starting...");
+        Log.Information("Application starting...");
 
         // -------------------------------
         // Create .NET 8 Host
@@ -62,7 +62,7 @@ class Program
         }
         catch (Exception ex)
         {
-            Log.Fatal(ex, "Service terminated unexpectedly");
+            Log.Fatal(ex, "Application terminated unexpectedly");
         }
         finally
         {
