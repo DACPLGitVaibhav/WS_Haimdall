@@ -194,7 +194,6 @@ namespace WS_Haimdall
                 throw;
             }
         }
-
         private void Client_ReconnectComplete(object? sender, EventArgs e)
         {
             lock (lockObj)
@@ -208,8 +207,6 @@ namespace WS_Haimdall
                 }
             }
         }
-
-
         private byte[] ConvertToSiemensDT(DateTime dt)
         {
             byte ToBcd(int value) => (byte)(((value / 10) << 4) | (value % 10));
@@ -230,7 +227,6 @@ namespace WS_Haimdall
 
             return data;
         }
-
         private async Task<bool> PlcOperation(TestData data)
         {
             if (_opcSession != null)
@@ -363,7 +359,6 @@ namespace WS_Haimdall
                 return false;
             }
         }
-
         private void MoveToBackup(string file)
         {
             try
