@@ -16,7 +16,7 @@ namespace WS_Haimdall
         #region Varraibles
         // New code update
         // Your  fields moved from Program
-        private Session _opcSession = null;       
+        private Session _opcSession = null;
         private SessionReconnectHandler reconnectHandler = null;
         private object lockObj = new object();
         public System.Timers.Timer tmr = null;
@@ -25,9 +25,8 @@ namespace WS_Haimdall
         private readonly object _timerLock = new object();
         private bool _isRunning = false; // optional but recommended
         private readonly IHostApplicationLifetime _lifetime = null;
-        #endregion
         private readonly ILogger<Worker> _logger;
-
+        #endregion
         public Worker(ILogger<Worker> logger, IHostApplicationLifetime lifetime)
         {
             _logger = logger;
@@ -36,41 +35,42 @@ namespace WS_Haimdall
 
         protected override Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            string Liencence= GetMachineSerialNumber();
-            if(Liencence == "") 
-            {              
-            
-            _ = Task.Run(async () =>
-             {
-                 try
+            string Liencence = GetMachineSerialNumber();
+            if (Liencence == "")
+            {
+
+                _ = Task.Run(async () =>
                  {
-                     Log.Information("=== Worker Service Started ===");
+                     try
+                     {
+                         Log.Information("=== Worker Service Started ===");
 
-                     var builder = new ConfigurationBuilder()
-                         .SetBasePath(AppContext.BaseDirectory)
-                         .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+                         var builder = new ConfigurationBuilder()
+                             .SetBasePath(AppContext.BaseDirectory)
+                             .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
 
-                     IConfiguration configuration = builder.Build();
-                     Config.Load(configuration);
+                         IConfiguration configuration = builder.Build();
+                         Config.Load(configuration);
 
-                     //Start OPC connection without blocking service startup
-                     _ = ConnectOPC();
+                         //Start OPC connection without blocking service startup
+                         await ConnectOPC();
 
-                     // Start timer
-                     tmr = new System.Timers.Timer(5000);
-                     tmr.Elapsed += Tmr_Elapsed;
-                     tmr.Start();
+                         // Start timer
+                         tmr = new System.Timers.Timer(5000);
+                         tmr.Elapsed += Tmr_Elapsed;
+                        
+                         tmr.Start();
 
-                     //while (!stoppingToken.IsCancellationRequested)
-                     //    await Task.Delay(1000);
-                 }
-                 catch (Exception ex)
-                 {
-                     Log.Error(ex, "Worker execution crashed.");
-                 }
-             });
+                         //while (!stoppingToken.IsCancellationRequested)
+                         //    await Task.Delay(1000);
+                     }
+                     catch (Exception ex)
+                     {
+                         Log.Error(ex, "Worker execution crashed.");
+                     }
+                 });
 
-            return Task.CompletedTask; // returns immediately ✔
+                return Task.CompletedTask; // returns immediately ✔
             }
             else
             {
@@ -389,7 +389,7 @@ namespace WS_Haimdall
                 if (tmr != null)
                 {
                     tmr.Stop();
-                    tmr.Elapsed -= Tmr_Elapsed;
+                    tmr.Elapsed -= Tmr_Elapsed; // Unsubscribe from event
                     tmr.Dispose();
                     Log.Information("Timer stopped.");
                 }
@@ -418,23 +418,25 @@ namespace WS_Haimdall
 
             await base.StopAsync(cancellationToken);
         }
+       
         private async void Tmr_Elapsed(object? sender, ElapsedEventArgs e)
         {
-            DateTime targateDate = Convert.ToDateTime("2025-12-31");
-            if (DateTime.Now > targateDate)
-            {
-                Log.Information("Trail Version is exceeded!!!!");
-                _lifetime.StopApplication();     // Graceful shutdown
-                return;
-            }
+            //DateTime targateDate = Convert.ToDateTime("2025-12-31");
+            //if (DateTime.Now > targateDate)
+            //{
+            //    Log.Information("Trail Version is exceeded!!!!");
+            //    _lifetime.StopApplication();     // Graceful shutdown
+            //    return;
+            //}
 
             try
             {
-                if (_isRunning)
-                    return; // prevent re-entry
+                //if (_isRunning)
+                //    return; // prevent re-entry
 
                 lock (_timerLock)
                 {
+                    if (_isRunning) return;
                     _isRunning = true;
                 }
 
@@ -463,6 +465,12 @@ namespace WS_Haimdall
 
                 #region CheckMapDrive
                 /////CheckPLCCon
+                if (string.IsNullOrEmpty(Config.WatchFolder) || string.IsNullOrEmpty(Config.Node_CheckPLCcon)
+                     || string.IsNullOrEmpty(Config.Node_CheckMapDrive))
+                {
+                    Log.Error("WatchFolder or Node_CheckPLCcon or Node_CheckMapDrive is not configured properly.");
+                    return;
+                }
                 await NewMethod(Config.Node_CheckPLCcon, true);
 
                 if (!Directory.Exists(Config.WatchFolder))
@@ -477,7 +485,7 @@ namespace WS_Haimdall
                 }
                 #endregion
 
-               
+
 
                 var latestFiles = new DirectoryInfo(Config.WatchFolder)
                .GetFiles("*.txt")
@@ -536,7 +544,13 @@ namespace WS_Haimdall
         {
             try
             {
-                var ctd = new CancellationTokenSource();
+                if (_opcSession == null || reconnectHandler != null || !_opcSession.Connected)
+                {
+                    Log.Warning("OPC not connected. Trying reconnect...");
+                    await ConnectOPC();
+                    return;
+                }
+               using var ctd = new CancellationTokenSource();
                 CancellationToken token = ctd.Token;
                 var writeValue = new WriteValueCollection()
                             {
