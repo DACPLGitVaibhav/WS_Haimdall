@@ -1,13 +1,10 @@
-﻿using BitFaster.Caching;
-using Newtonsoft.Json.Linq;
-using Opc.Ua;
+﻿using Opc.Ua;
 using Opc.Ua.Client;
-using Org.BouncyCastle.Math;
 using Serilog;
 using System.Globalization;
 using System.Management;
 using System.Timers;
-using static Org.BouncyCastle.Math.EC.ECCurve;
+
 
 namespace WS_Haimdall
 {
@@ -36,7 +33,7 @@ namespace WS_Haimdall
         protected override Task ExecuteAsync(CancellationToken stoppingToken)
         {
             string Liencence = GetMachineSerialNumber();
-            if (Liencence == "")
+            if (Liencence == "T6959269")
             {
 
                 _ = Task.Run(async () =>
@@ -147,6 +144,7 @@ namespace WS_Haimdall
             string serialNumber = "";
             try
             {
+                ///// get SRno using cmd :- wmic bios get serialnumber.
                 ManagementObjectSearcher searcher = new ManagementObjectSearcher("SELECT SerialNumber FROM Win32_BIOS");
                 ManagementObjectCollection information = searcher.Get();
                 foreach (ManagementObject obj in information)
