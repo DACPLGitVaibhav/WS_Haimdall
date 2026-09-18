@@ -1,13 +1,10 @@
-﻿using BitFaster.Caching;
-using Newtonsoft.Json.Linq;
-using Opc.Ua;
+﻿using Opc.Ua;
 using Opc.Ua.Client;
-using Org.BouncyCastle.Math;
 using Serilog;
 using System.Globalization;
 using System.Management;
 using System.Timers;
-using static Org.BouncyCastle.Math.EC.ECCurve;
+
 
 namespace WS_Haimdall
 {
@@ -20,12 +17,16 @@ namespace WS_Haimdall
         private SessionReconnectHandler reconnectHandler = null;
         private object lockObj = new object();
         public System.Timers.Timer tmr = null;
+        public System.Timers.Timer tmr1 = null;
         private bool FileMove = true;
         private string filename = string.Empty;
         private readonly object _timerLock = new object();
         private bool _isRunning = false; // optional but recommended
         private readonly IHostApplicationLifetime _lifetime = null;
         private readonly ILogger<Worker> _logger;
+        private readonly object _timerLock1 = new object();
+        private bool _isRunning1 = false;
+        private volatile bool _isAutoMode = true;
         #endregion
         public Worker(ILogger<Worker> logger, IHostApplicationLifetime lifetime)
         {
@@ -36,7 +37,7 @@ namespace WS_Haimdall
         protected override Task ExecuteAsync(CancellationToken stoppingToken)
         {
             string Liencence = GetMachineSerialNumber();
-            if (Liencence == "")
+            if (Liencence == "T6959269")
             {
 
                 _ = Task.Run(async () =>
@@ -56,10 +57,15 @@ namespace WS_Haimdall
                          await ConnectOPC();
 
                          // Start timer
-                         tmr = new System.Timers.Timer(5000);
+                         tmr = new System.Timers.Timer(3000);
                          tmr.Elapsed += Tmr_Elapsed;
-                        
+
                          tmr.Start();
+                         // Start timer
+                         tmr1 = new System.Timers.Timer(2000);
+                         tmr1.Elapsed += Tmr_Elapsed1;
+
+                         tmr1.Start();
 
                          //while (!stoppingToken.IsCancellationRequested)
                          //    await Task.Delay(1000);
@@ -81,6 +87,9 @@ namespace WS_Haimdall
                 return Task.CompletedTask;
             }
         }
+
+      
+
         [Obsolete]
         private async Task ConnectOPC()
         {
@@ -234,13 +243,15 @@ namespace WS_Haimdall
                 var ctd = new CancellationTokenSource();
                 CancellationToken token = ctd.Token;
                 string? serial = "";
-
-                byte[] siemensDT = ConvertToSiemensDT(data.TestDate);
+                bool scanFlag = false;
+               
 
                 try
                 {
                     var value = await _opcSession.ReadValueAsync(Config.Node_SerialNo);
+                    var value1 = await _opcSession.ReadValueAsync(Config.Node_ScanFlag);
                     serial = value.Value?.ToString();
+                     scanFlag = value1.Value is bool b && b;
                 }
                 catch (Exception ex)
                 {
@@ -250,7 +261,7 @@ namespace WS_Haimdall
                     }
                     else
                     {
-                        Log.Error("Error while read Serial No: {err}", ex.Message);
+                        Log.Error("Error while read Serial No or CycleBit: {err}", ex.Message);
                     }
 
                     return false;
@@ -258,8 +269,10 @@ namespace WS_Haimdall
 
                 try
                 {
-                    if (!string.IsNullOrEmpty(serial))
+                    if (!string.IsNullOrEmpty(serial) && scanFlag)
                     {
+                        byte[] siemensDT = ConvertToSiemensDT(data.TestDate);
+
                         var writes = new WriteValueCollection()
                     {
                         new WriteValue {
@@ -394,6 +407,14 @@ namespace WS_Haimdall
                     Log.Information("Timer stopped.");
                 }
 
+                if (tmr1 != null)
+                {
+                    tmr1.Stop();
+                    tmr1.Elapsed -= Tmr_Elapsed1; // Unsubscribe from event
+                    tmr1.Dispose();
+                    Log.Information("Timer stopped.");
+                }
+
                 // ---- Dispose OPC Session ----
                 if (_opcSession != null)
                 {
@@ -418,7 +439,71 @@ namespace WS_Haimdall
 
             await base.StopAsync(cancellationToken);
         }
-       
+        private async void Tmr_Elapsed1(object? sender, ElapsedEventArgs e)
+        {
+            if (_opcSession == null)
+            {
+                Log.Warning("OPC not connected. Trying reconnect...");
+
+                return;
+            }
+            try
+            {
+                lock (_timerLock1)
+                {
+                    if (_isRunning1) return;
+                    _isRunning1 = true;
+                }
+                if (!Directory.Exists(Config.WatchFolder))
+                {
+                    Log.Error("Watch Folder path is not accessible.");
+                    return;
+                }
+
+
+                var value = await _opcSession.ReadValueAsync(Config.Node_CheckAutoBit);
+                _isAutoMode = value.Value is bool b && b;
+
+                if (!_isAutoMode)
+                {
+                    Log.Information("Manual Mode is ON. Delete files from Watch Folder.");
+                    var files = Directory.GetFiles(Config.WatchFolder, "*.txt");
+                    foreach (var file in files)
+                    {
+                        try
+                        {
+                            // Remove ReadOnly attribute if present
+                            FileAttributes attributes = File.GetAttributes(file);
+
+                            if ((attributes & FileAttributes.ReadOnly) == FileAttributes.ReadOnly)
+                            {
+                                File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
+                            }
+
+                            File.Delete(file);
+
+                            Log.Information($"Deleted file: {file}");
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Error(ex, $"Error deleting file: {file}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error reading Tmr_Elapsed1 Method (Delete files).");
+
+            }
+            finally
+            {
+                lock (_timerLock1)
+                {
+                    _isRunning1 = false;
+                }
+            }
+        }
         private async void Tmr_Elapsed(object? sender, ElapsedEventArgs e)
         {
             //DateTime targateDate = Convert.ToDateTime("2025-12-31");
@@ -431,6 +516,8 @@ namespace WS_Haimdall
 
             try
             {
+                if (!_isAutoMode)
+                    return;
                 //if (_isRunning)
                 //    return; // prevent re-entry
 
@@ -547,10 +634,10 @@ namespace WS_Haimdall
                 if (_opcSession == null || reconnectHandler != null || !_opcSession.Connected)
                 {
                     Log.Warning("OPC not connected. Trying reconnect...");
-                    await ConnectOPC();
+                    //  await ConnectOPC();
                     return;
                 }
-               using var ctd = new CancellationTokenSource();
+                using var ctd = new CancellationTokenSource();
                 CancellationToken token = ctd.Token;
                 var writeValue = new WriteValueCollection()
                             {
@@ -593,6 +680,7 @@ namespace WS_Haimdall
         public static string Node_ScanFlag { get; private set; } = string.Empty;
         public static string Node_CheckMapDrive { get; private set; } = string.Empty;
         public static string Node_CheckPLCcon { get; private set; } = string.Empty;
+        public static string Node_CheckAutoBit { get; private set; } = string.Empty;
 
         public static void Load(IConfiguration config)
         {
@@ -610,6 +698,7 @@ namespace WS_Haimdall
 
             Node_CheckMapDrive = config["AppConfig:Node_CheckMapDrive"] ?? string.Empty;
             Node_CheckPLCcon = config["AppConfig:Node_CheckPLCcon"] ?? string.Empty;
+            Node_CheckAutoBit = config["AppConfig:Node_CheckAutoBit"] ?? string.Empty;
         }
     }
     public class TestData
