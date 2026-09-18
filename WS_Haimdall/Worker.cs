@@ -156,6 +156,7 @@ namespace WS_Haimdall
             string serialNumber = "";
             try
             {
+                ///// get SRno using cmd :- wmic bios get serialnumber.
                 ManagementObjectSearcher searcher = new ManagementObjectSearcher("SELECT SerialNumber FROM Win32_BIOS");
                 ManagementObjectCollection information = searcher.Get();
                 foreach (ManagementObject obj in information)
